@@ -1,12 +1,12 @@
-import "dotenv/config"; // Automatically loads .env
-import fs from "fs";
-import path from "path"
+/* eslint-disable @typescript-eslint/no-var-requires */
+require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
 
-// Get vault plugin path from environment variable
 const vaultPluginPath = process.env.OBSIDIAN_PLUGIN_PATH;
 
 if (!vaultPluginPath) {
-	console.error("OBISIDIAN_PLUGIN_PATH environment variable not set.");
+	console.error("❌ OBSIDIAN_PLUGIN_PATH environment variable not set.");
 	process.exit(1);
 }
 
@@ -19,9 +19,9 @@ for (const file of filesToCopy) {
 
 	fs.copyFile(src, dest, (err) => {
 		if (err) {
-			console.error(`Failed to copy ${file}:`, err);
+			console.error(`❌ Failed to copy ${file}:`, err);
 		} else {
-			console.log(`Copied ${file} to ${dest}`);
+			console.log(`✅ Copied ${file} to ${dest}`);
 		}
 	});
 }
