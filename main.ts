@@ -1,3 +1,5 @@
+import { RangeSetBuilder, } from "@codemirror/state";
+import { Decoration, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import {
 	App,
 	Plugin,
@@ -21,6 +23,55 @@ export default class FolderLinkPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+
+		const folderLinkRegex = /\|\|([^|/:*?"<>]+\/)\|\|/g;
+
+		const folderLinkPlugin = ViewPlugin.fromClass(
+			class {
+				decorations;
+
+				constructor(view: EditorView) {
+					this.decorations = this.buildDecorations(view);
+				}
+
+				update(update: ViewUpdate) {
+					if (update.docChanged || update.viewportChanged) {
+						this.decorations = this.buildDecorations(update.view);
+					}
+				}
+
+				buildDecorations(view: EditorView) {
+					const builder = new RangeSetBuilder<Decoration>();
+					const text = view.state.doc.toString();
+
+					for (const { from, to } of view.visibleRanges) {
+						const visibleText = text.slice(from, to);
+						let match;
+						while ((match = folderLinkRegex.exec(visibleText))) {
+							const start = from + match.index;
+							const end = start + match[0].length;
+							const folderName = match[1];
+
+							const deco = Decoration.mark({
+								attributes: {
+									class: "folder-link",
+									"data-folder": folderName,
+									style: "cursor:pointer; color:var(--link-color); text-decoration:underline;",
+								}
+							});
+							builder.add(start, end, deco);
+						}
+					}
+					return builder.finish();
+				}
+			},
+			{
+				decorations: (v) => v.decorations
+			}
+		);
+
+		// Register the editor extesnsion (for live preview)
+		this.registerEditorExtension(folderLinkPlugin);
 
 		// Render ||Folder/|| links in both Reading and Live Preview
 		this.registerMarkdownPostProcessor(
