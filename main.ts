@@ -1,4 +1,12 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice } from "obsidian";
+import {
+	App,
+	Plugin,
+	TFile,
+	PluginSettingTab,
+	Setting,
+	Notice,
+	MarkdownPostProcessorContext,
+} from "obsidian";
 
 interface FolderLinkPluginSettings {
 	folderPrefix: string;
@@ -14,38 +22,66 @@ export default class FolderLinkPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// Post-process markdown to convert ||Folder/|| into clickable folder links
-		this.registerMarkdownPostProcessor((element, context) => {
-			const matches = element.innerHTML.matchAll(/\|\|([^|/\\:*?"<>]+\/)\|\|/g);
+		// Render ||Folder/|| in Live Preview + Reading View
+		this.registerMarkdownCodeBlockProcessor("folderlink", async () => {});
 
-			for (const match of matches) {
-				const folderName = match[1].trim();
-				const fullMatch = match[0];
+		this.registerMarkdownPostProcessor(
+			(element, ctx: MarkdownPostProcessorContext) => {
+				// Handle live preview + reading view rendering
+				element
+					.querySelectorAll("span.cm-inline-code")
+					.forEach((el) => {
+						const text = el.textContent?.trim();
+						if (text?.match(/^(\|\|[^|/\\:*?"<>]+\/\|\|)$/)) {
+							const folderName = text.slice(2, -2).trim();
 
-				// Replace with a clickable styled link element
-				element.innerHTML = element.innerHTML.replace(
-					fullMatch,
-					`<a class="folder-link" data-folder="${folderName}" style="cursor:pointer; color:var(--link-color); text-decoration:underline;">${folderName}</a>`
-				);
+							// Replace the inline code with a clickable element
+							const link = document.createElement("a");
+							link.classList.add("folder-link");
+							link.dataset.folder = folderName;
+							link.dataset.sourcePath = ctx.sourcePath;
+							link.innerText = folderName;
+							link.style.cursor = "pointer";
+							link.style.color = "var(--link-color)";
+							link.style.textDecoration = "underline";
+
+							el.replaceWith(link);
+						}
+					});
 			}
-		});
+		);
 
-		// Global click handler for folder-link elements
+		// Handle link click
 		document.addEventListener("click", async (e: MouseEvent) => {
 			const target = e.target as HTMLElement;
-			if (target?.classList.contains("folder-link")) {
-				const folder = target.dataset.folder;
-				if (!folder) return;
+			if (!target.classList.contains("folder-link")) return;
 
-				e.preventDefault();
+			e.preventDefault();
 
-				const exists = await this.app.vault.adapter.exists(folder);
-				if (!exists) {
-					await this.app.vault.createFolder(folder);
-					new Notice(`Created folder: ${folder}`);
-				} else {
-					new Notice(`Folder already exists: ${folder}`);
-				}
+			const folderName = target.dataset.folder;
+			const sourcePath = target.dataset.sourcePath;
+
+			if (!folderName || !sourcePath) return;
+
+			// Get current note’s folder path
+			const currentFile =
+				this.app.vault.getAbstractFileByPath(sourcePath);
+			if (!currentFile ||!(currentFile instanceof TFile)) {
+				new Notice("⚠️ Could not determine origin note folder.");
+				return;
+			}
+
+			const parentFolder = sourcePath.split("/").slice(0, -1).join("/");
+			const folderPath = parentFolder
+				? `${parentFolder}/${folderName}`
+				: folderName;
+
+			const exists = await this.app.vault.adapter.exists(folderPath);
+			if (!exists) {
+				await this.app.vault.createFolder(folderPath);
+				new Notice(`📁 Created folder: ${folderPath}`);
+			} else {
+				new Notice(`✅ Folder already exists: ${folderPath}`);
 			}
 		});
 
