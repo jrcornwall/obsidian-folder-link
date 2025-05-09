@@ -22,33 +22,70 @@ export default class FolderLinkPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// Handle ||folder/|| rendering in Live Preview and Reading View
+		// Render ||Folder/|| links in both Reading and Live Preview
 		this.registerMarkdownPostProcessor(
-			(element, ctx: MarkdownPostProcessorContext) => {
-				element
-					.querySelectorAll("span.cm-inline-code")
-					.forEach((el) => {
-						const text = el.textContent?.trim();
-						if (text?.match(/^(\|\|[^|/:*?"<>]+\/\|\|)$/)) {
-							const folderName = text.slice(2, -2).trim();
+			(element: HTMLElement, ctx: MarkdownPostProcessorContext) => {
+				const textNodes = document.createTreeWalker(
+					element,
+					NodeFilter.SHOW_TEXT
+				);
+				let current: Node | null;
 
-							// Create clickable link
-							const link = document.createElement("a");
-							link.classList.add("folder-link");
-							link.dataset.folder = folderName;
-							link.dataset.sourcePath = ctx.sourcePath;
-							link.innerText = folderName;
-							link.style.cursor = "pointer";
-							link.style.color = "var(--link-color)";
-							link.style.textDecoration = "underline";
+				while ((current = textNodes.nextNode())) {
+					const text = current.nodeValue;
+					if (!text) continue;
 
-							el.replaceWith(link);
+					// Match all occurrences of ||something/||
+					const matches = [
+						...text.matchAll(/\|\|([^|/:*?"<>]+\/)\|\|/g),
+					];
+					if (matches.length === 0) continue;
+
+					const frag = document.createDocumentFragment();
+					let lastIndex = 0;
+
+					for (const match of matches) {
+						const matchText = match[0];
+						const folderName = match[1];
+						const matchIndex = match.index ?? 0;
+
+						// Add preceding text
+						if (matchIndex > lastIndex) {
+							frag.appendChild(
+								document.createTextNode(
+									text.slice(lastIndex, matchIndex)
+								)
+							);
 						}
-					});
+
+						// Create clickable link
+						const link = document.createElement("a");
+						link.classList.add("folder-link");
+						link.dataset.folder = folderName;
+						link.dataset.sourcePath = ctx.sourcePath;
+						link.innerText = folderName;
+						link.style.cursor = "pointer";
+						link.style.color = "var(--link-color)";
+						link.style.textDecoration = "underline";
+
+						frag.appendChild(link);
+						lastIndex = matchIndex + matchText.length;
+					}
+
+					// Add any remaining text
+					if (lastIndex < text.length) {
+						frag.appendChild(
+							document.createTextNode(text.slice(lastIndex))
+						);
+					}
+
+					// Replace original text node
+					current.parentNode?.replaceChild(frag, current);
+				}
 			}
 		);
 
-		// Handle click events on folder links
+		// Handle click events on links
 		document.addEventListener("click", async (e: MouseEvent) => {
 			const target = e.target as HTMLElement;
 			if (!target.classList.contains("folder-link")) return;
@@ -57,7 +94,6 @@ export default class FolderLinkPlugin extends Plugin {
 
 			const folderName = target.dataset.folder;
 			const sourcePath = target.dataset.sourcePath;
-
 			if (!folderName || !sourcePath) return;
 
 			const currentFile =
@@ -67,7 +103,6 @@ export default class FolderLinkPlugin extends Plugin {
 				return;
 			}
 
-			// Build relative folder path
 			const parentFolder = sourcePath.split("/").slice(0, -1).join("/");
 			const folderPath = parentFolder
 				? `${parentFolder}/${folderName}`
