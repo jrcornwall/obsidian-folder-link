@@ -21,6 +21,8 @@ data.json
 # System files (macOS, Windows)
 .DS_Store
 Thumbs.db
+# Personal Environment variables
+.env
 
 # Logs
 npm-debug.log*
