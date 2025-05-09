@@ -22,20 +22,17 @@ export default class FolderLinkPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// Render ||Folder/|| in Live Preview + Reading View
-		this.registerMarkdownCodeBlockProcessor("folderlink", async () => {});
-
+		// Handle ||folder/|| rendering in Live Preview and Reading View
 		this.registerMarkdownPostProcessor(
 			(element, ctx: MarkdownPostProcessorContext) => {
-				// Handle live preview + reading view rendering
 				element
 					.querySelectorAll("span.cm-inline-code")
 					.forEach((el) => {
 						const text = el.textContent?.trim();
-						if (text?.match(/^(\|\|[^|/\\:*?"<>]+\/\|\|)$/)) {
+						if (text?.match(/^(\|\|[^|/:*?"<>]+\/\|\|)$/)) {
 							const folderName = text.slice(2, -2).trim();
 
-							// Replace the inline code with a clickable element
+							// Create clickable link
 							const link = document.createElement("a");
 							link.classList.add("folder-link");
 							link.dataset.folder = folderName;
@@ -51,7 +48,7 @@ export default class FolderLinkPlugin extends Plugin {
 			}
 		);
 
-		// Handle link click
+		// Handle click events on folder links
 		document.addEventListener("click", async (e: MouseEvent) => {
 			const target = e.target as HTMLElement;
 			if (!target.classList.contains("folder-link")) return;
@@ -63,14 +60,14 @@ export default class FolderLinkPlugin extends Plugin {
 
 			if (!folderName || !sourcePath) return;
 
-			// Get current note’s folder path
 			const currentFile =
 				this.app.vault.getAbstractFileByPath(sourcePath);
-			if (!currentFile ||!(currentFile instanceof TFile)) {
-				new Notice("⚠️ Could not determine origin note folder.");
+			if (!currentFile || !(currentFile instanceof TFile)) {
+				new Notice("⚠️ Could not determine origin note location.");
 				return;
 			}
 
+			// Build relative folder path
 			const parentFolder = sourcePath.split("/").slice(0, -1).join("/");
 			const folderPath = parentFolder
 				? `${parentFolder}/${folderName}`
@@ -119,7 +116,9 @@ class FolderLinkSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Optional Folder Prefix")
-			.setDesc("Currently unused, reserved for future development.")
+			.setDesc(
+				"Currently unused; future support for prefixing folder paths."
+			)
 			.addText((text) =>
 				text
 					.setPlaceholder("e.g., Projects/")
