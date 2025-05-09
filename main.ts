@@ -3,7 +3,8 @@ import {
 	Plugin,
 	TFile,
 	PluginSettingTab,
-	Setting
+	Setting,
+	Notice
 } from "obsidian";
 
 interface FolderLinkPluginSettings {
@@ -35,7 +36,17 @@ export default class FolderLinkPlugin extends Plugin {
 						if (!exists) {
 							await this.app.vault.createFolder(folderPath);
 							console.log(`Created folder: ${folderPath}`);
+							new Notice(`Created folder: ${folderPath}`);
+						} else {
+							console.log(`Folder already exists: ${folderPath}`);
+							new Notice(`Folder already exists: $[folderPath}`);
 						}
+					}
+
+					// Optional: delete the file if it only contains a folder link
+					if (folderLinks.length === 1 && content.trim() === folderLinks[0]) {
+						await this.app.vault.delete(file);
+						console.log(`🗑️ Deleted placeholder file: ${file.path}`);
 					}
 				}
 			})
