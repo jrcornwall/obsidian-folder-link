@@ -20,20 +20,18 @@ export default class FolderLinkPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// Folder creation on file open based on [[folder/]] links
+		// Watch for newly created files
 		this.registerEvent(
-			this.app.workspace.on("file-open", async (file: TFile | null) => {
-				if (!file || !file.path.endsWith(".md")) return;
+			this.app.vault.on("create", async (file) => {
+				if (!(file instanceof TFile) || !file.path.endsWith(".md")) return;
 
 				const content = await this.app.vault.read(file);
-				const folderLinks = content.match(/\[\[([\w\s/-]+\/)\]\]/g);
+				const folderLinks = content.match(/\[\[([^\]]+\/)\]\]/g);
 
 				if (folderLinks) {
 					for (const link of folderLinks) {
 						const folderPath = link.slice(2, -2); // Remove [[ and ]]
-						const exists = await this.app.vault.adapter.exists(
-							folderPath
-						);
+						const exists = await this.app.vault.adapter.exists(folderPath);
 						if (!exists) {
 							await this.app.vault.createFolder(folderPath);
 							console.log(`Created folder: ${folderPath}`);
