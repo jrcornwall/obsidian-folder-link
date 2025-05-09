@@ -4,7 +4,7 @@ import {
 	TFile,
 	PluginSettingTab,
 	Setting,
-	Notice
+	Notice,
 } from "obsidian";
 
 interface FolderLinkPluginSettings {
@@ -21,32 +21,38 @@ export default class FolderLinkPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// Watch for newly created files
 		this.registerEvent(
 			this.app.vault.on("create", async (file) => {
-				if (!(file instanceof TFile) || !file.path.endsWith(".md")) return;
+				if (!(file instanceof TFile) || !file.path.endsWith(".md"))
+					return;
 
 				const content = await this.app.vault.read(file);
-				const folderLinks = content.match(/\[\[([^\]]+\/)\]\]/g);
+				const folderLinks = content.match(/\|\|([^|]+\/)\|\|/g); // Match ||folder/||
 
-				if (folderLinks) {
-					for (const link of folderLinks) {
-						const folderPath = link.slice(2, -2); // Remove [[ and ]]
-						const exists = await this.app.vault.adapter.exists(folderPath);
-						if (!exists) {
-							await this.app.vault.createFolder(folderPath);
-							console.log(`Created folder: ${folderPath}`);
-							new Notice(`Created folder: ${folderPath}`);
-						} else {
-							console.log(`Folder already exists: ${folderPath}`);
-							new Notice(`Folder already exists: $[folderPath}`);
-						}
+				if (!folderLinks) return;
+
+				for (const rawLink of folderLinks) {
+					const folderPath = rawLink.slice(2, -2).trim(); // Remove || ||
+
+					// Delete note if its filename matches folder name
+					const filenameWithoutExt = file.basename;
+					const folderName = folderPath.replace(/\/$/, "");
+
+					if (filenameWithoutExt === folderName) {
+						await this.app.vault.delete(file);
+						console.log(`🗑️ Deleted misnamed file: ${file.path}`);
 					}
 
-					// Optional: delete the file if it only contains a folder link
-					if (folderLinks.length === 1 && content.trim() === folderLinks[0]) {
-						await this.app.vault.delete(file);
-						console.log(`🗑️ Deleted placeholder file: ${file.path}`);
+					const exists = await this.app.vault.adapter.exists(
+						folderPath
+					);
+					if (!exists) {
+						await this.app.vault.createFolder(folderPath);
+						console.log(`📁 Created folder: ${folderPath}`);
+						new Notice(`📁 Created folder: ${folderPath}`);
+					} else {
+						console.log(`✅ Folder already exists: ${folderPath}`);
+						new Notice(`✅ Folder already exists: ${folderPath}`);
 					}
 				}
 			})
