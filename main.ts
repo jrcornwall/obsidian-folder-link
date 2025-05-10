@@ -55,6 +55,11 @@ class FolderLinkWidget extends WidgetType {
 	}
 }
 
+// Extend EditorView to include the app property
+interface ExtendedEditorView extends EditorView {
+	app: App;
+}
+
 export default class FolderLinkPlugin extends Plugin {
 	settings: FolderLinkPluginSettings;
 
@@ -66,10 +71,10 @@ export default class FolderLinkPlugin extends Plugin {
 		const folderLinkPlugin = ViewPlugin.fromClass(
 			class {
 				decorations;
-				view: EditorView;
+				view: ExtendedEditorView;
 
 				constructor(view: EditorView) {
-					this.view = view;
+					this.view = view as ExtendedEditorView; // Cast to ExtendedEditorView
 					this.decorations = this.buildDecorations(view);
 				}
 
@@ -82,10 +87,8 @@ export default class FolderLinkPlugin extends Plugin {
 				buildDecorations(view: EditorView) {
 					const builder = new RangeSetBuilder<Decoration>();
 					const text = view.state.doc.toString();
-					const sourcePath =
-						view.dom
-							.closest("[data-path]")
-							?.getAttribute("data-path") || "";
+					const activeFile = this.view.app.workspace.getActiveFile(); // Use the extended type
+					const sourcePath = activeFile?.path ?? "";
 
 					for (const { from, to } of view.visibleRanges) {
 						const visibleText = text.slice(from, to);
