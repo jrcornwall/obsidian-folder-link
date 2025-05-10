@@ -1,5 +1,3 @@
-import { RangeSetBuilder, } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import {
 	App,
 	Plugin,
@@ -10,6 +8,15 @@ import {
 	MarkdownPostProcessorContext,
 } from "obsidian";
 
+import { RangeSetBuilder } from "@codemirror/state";
+import {
+	Decoration,
+	EditorView,
+	ViewPlugin,
+	ViewUpdate,
+	WidgetType,
+} from "@codemirror/view";
+
 interface FolderLinkPluginSettings {
 	folderPrefix: string;
 }
@@ -17,6 +24,36 @@ interface FolderLinkPluginSettings {
 const DEFAULT_SETTINGS: FolderLinkPluginSettings = {
 	folderPrefix: "",
 };
+
+class FolderLinkWidget extends WidgetType {
+	constructor(private folderName: string, private sourcePath: string) {
+		super();
+	}
+
+	toDOM(): HTMLElement {
+		const link = document.createElement("a");
+		link.classList.add("folder-link");
+		link.dataset.folder = this.folderName;
+		link.dataset.sourcePath = this.sourcePath;
+		link.innerText = this.folderName;
+		link.style.cursor = "pointer";
+		link.style.color = "var(--link-color)";
+		link.style.textDecoration = "underline";
+		return link;
+	}
+
+	eq(other: WidgetType): boolean {
+		return (
+			other instanceof FolderLinkWidget &&
+			other.folderName === this.folderName &&
+			other.sourcePath === this.sourcePath
+		);
+	}
+
+	ignoreEvent(): boolean {
+		return false;
+	}
+}
 
 export default class FolderLinkPlugin extends Plugin {
 	settings: FolderLinkPluginSettings;
@@ -29,8 +66,10 @@ export default class FolderLinkPlugin extends Plugin {
 		const folderLinkPlugin = ViewPlugin.fromClass(
 			class {
 				decorations;
+				view: EditorView;
 
 				constructor(view: EditorView) {
+					this.view = view;
 					this.decorations = this.buildDecorations(view);
 				}
 
@@ -43,37 +82,39 @@ export default class FolderLinkPlugin extends Plugin {
 				buildDecorations(view: EditorView) {
 					const builder = new RangeSetBuilder<Decoration>();
 					const text = view.state.doc.toString();
+					const sourcePath =
+						view.dom
+							.closest("[data-path]")
+							?.getAttribute("data-path") || "";
 
 					for (const { from, to } of view.visibleRanges) {
 						const visibleText = text.slice(from, to);
 						let match;
 						while ((match = folderLinkRegex.exec(visibleText))) {
 							const start = from + match.index;
-							const end = start + match[0].length;
 							const folderName = match[1];
 
-							const deco = Decoration.mark({
-								attributes: {
-									class: "folder-link",
-									"data-folder": folderName,
-									style: "cursor:pointer; color:var(--link-color); text-decoration:underline;",
-								}
+							const deco = Decoration.widget({
+								widget: new FolderLinkWidget(
+									folderName,
+									sourcePath
+								),
+								side: 1,
 							});
-							builder.add(start, end, deco);
+
+							builder.add(start, start + match[0].length, deco);
 						}
 					}
 					return builder.finish();
 				}
 			},
 			{
-				decorations: (v) => v.decorations
+				decorations: (v) => v.decorations,
 			}
 		);
 
-		// Register the editor extesnsion (for live preview)
 		this.registerEditorExtension(folderLinkPlugin);
 
-		// Render ||Folder/|| links in both Reading and Live Preview
 		this.registerMarkdownPostProcessor(
 			(element: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 				const textNodes = document.createTreeWalker(
@@ -86,7 +127,6 @@ export default class FolderLinkPlugin extends Plugin {
 					const text = current.nodeValue;
 					if (!text) continue;
 
-					// Match all occurrences of ||something/||
 					const matches = [
 						...text.matchAll(/\|\|([^|/:*?"<>]+\/)\|\|/g),
 					];
@@ -100,7 +140,6 @@ export default class FolderLinkPlugin extends Plugin {
 						const folderName = match[1];
 						const matchIndex = match.index ?? 0;
 
-						// Add preceding text
 						if (matchIndex > lastIndex) {
 							frag.appendChild(
 								document.createTextNode(
@@ -109,7 +148,6 @@ export default class FolderLinkPlugin extends Plugin {
 							);
 						}
 
-						// Create clickable link
 						const link = document.createElement("a");
 						link.classList.add("folder-link");
 						link.dataset.folder = folderName;
@@ -118,25 +156,22 @@ export default class FolderLinkPlugin extends Plugin {
 						link.style.cursor = "pointer";
 						link.style.color = "var(--link-color)";
 						link.style.textDecoration = "underline";
-
 						frag.appendChild(link);
+
 						lastIndex = matchIndex + matchText.length;
 					}
 
-					// Add any remaining text
 					if (lastIndex < text.length) {
 						frag.appendChild(
 							document.createTextNode(text.slice(lastIndex))
 						);
 					}
 
-					// Replace original text node
 					current.parentNode?.replaceChild(frag, current);
 				}
 			}
 		);
 
-		// Handle click events on links
 		document.addEventListener("click", async (e: MouseEvent) => {
 			const target = e.target as HTMLElement;
 			if (!target.classList.contains("folder-link")) return;
@@ -145,6 +180,7 @@ export default class FolderLinkPlugin extends Plugin {
 
 			const folderName = target.dataset.folder;
 			const sourcePath = target.dataset.sourcePath;
+
 			if (!folderName || !sourcePath) return;
 
 			const currentFile =
