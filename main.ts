@@ -19,10 +19,12 @@ import {
 
 interface FolderLinkPluginSettings {
 	folderPrefix: string;
+	createFolderNote: boolean;
 }
 
 const DEFAULT_SETTINGS: FolderLinkPluginSettings = {
 	folderPrefix: "",
+	createFolderNote: true,
 };
 
 class FolderLinkWidget extends WidgetType {
@@ -55,11 +57,6 @@ class FolderLinkWidget extends WidgetType {
 	}
 }
 
-// Extend EditorView to include the app property
-interface ExtendedEditorView extends EditorView {
-	app: App;
-}
-
 export default class FolderLinkPlugin extends Plugin {
 	settings: FolderLinkPluginSettings;
 
@@ -68,13 +65,15 @@ export default class FolderLinkPlugin extends Plugin {
 
 		const folderLinkRegex = /\|\|([^|/:*?"<>]+\/)\|\|/g;
 
+		// eslint-disable-next-line @typescript-eslint/no-this-alias
+		const plugin = this;
 		const folderLinkPlugin = ViewPlugin.fromClass(
 			class {
 				decorations;
-				view: ExtendedEditorView;
+				view: EditorView;
 
 				constructor(view: EditorView) {
-					this.view = view as ExtendedEditorView; // Cast to ExtendedEditorView
+					this.view = view;
 					this.decorations = this.buildDecorations(view);
 				}
 
@@ -87,7 +86,7 @@ export default class FolderLinkPlugin extends Plugin {
 				buildDecorations(view: EditorView) {
 					const builder = new RangeSetBuilder<Decoration>();
 					const text = view.state.doc.toString();
-					const activeFile = this.view.app.workspace.getActiveFile(); // Use the extended type
+					const activeFile = plugin.app.workspace.getActiveFile();
 					const sourcePath = activeFile?.path ?? "";
 
 					for (const { from, to } of view.visibleRanges) {
@@ -201,6 +200,17 @@ export default class FolderLinkPlugin extends Plugin {
 			const exists = await this.app.vault.adapter.exists(folderPath);
 			if (!exists) {
 				await this.app.vault.createFolder(folderPath);
+
+				if (this.settings.createFolderNote) {
+					const folderNotePath = `${folderPath}/${folderName}.md`;
+					const noteExists = await this.app.vault.adapter.exists(
+						folderNotePath
+					);
+					if (!noteExists) {
+						await this.app.vault.create(folderNotePath, "");
+					}
+				}
+
 				new Notice(`📁 Created folder: ${folderPath}`);
 			} else {
 				new Notice(`✅ Folder already exists: ${folderPath}`);
@@ -238,6 +248,20 @@ class FolderLinkSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+
+		new Setting(containerEl)
+			.setName("Create folder note")
+			.setDesc(
+				"If enabled, a note with the same name will be created in each new folder."
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.createFolderNote)
+					.onChange(async (value) => {
+						this.plugin.settings.createFolderNote = value;
+						await this.plugin.saveSettings();
+					})
+			);
 
 		new Setting(containerEl)
 			.setName("Optional Folder Prefix")
